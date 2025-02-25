@@ -1,8 +1,11 @@
 <?php  
-// Start session if needed
-// session_start(); 
 
-require_once 'constant.php';  
+require_once 'constant.php'; 
+
+header("Content-Type: application/json");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 // Ensure $conn is defined properly
 if (!isset($conn) || $conn->connect_error) {  
@@ -16,8 +19,6 @@ $createTableQuery = "CREATE TABLE IF NOT EXISTS quiz_table (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  
 )";  
 $conn->query($createTableQuery);
-
- 
 
 $message = "";
 
@@ -66,22 +67,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     exit; // Exit after sending JSON response  
 }  
 
-if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['id'])) {
-    $user_id = intval($_GET['id']); // Sanitize input
+if ($_SERVER["REQUEST_METHOD"] == "GET") {
+    if (isset($_GET['id'])) {
+        // Fetch a specific user
+        $user_id = intval($_GET['id']); // Sanitize input
 
-    $query = "SELECT id, full_name, created_at FROM quiz_table WHERE id = ?";
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+        $query = "SELECT id, full_name, created_at FROM quiz_table WHERE id = ?";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
 
-    if ($result->num_rows > 0) {
-        $user = $result->fetch_assoc();
-        echo json_encode(["status" => "success", "data" => $user]);
+        if ($result->num_rows > 0) {
+            $user = $result->fetch_assoc();
+            echo json_encode(["status" => "success", "data" => $user]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "User not found"]);
+        }
+        $stmt->close();
     } else {
-        echo json_encode(["status" => "error", "message" => "User not found"]);
+        // Fetch all users
+        $query = "SELECT id, full_name, created_at FROM quiz_table";
+        $result = $conn->query($query);
+
+        if ($result->num_rows > 0) {
+            $users = [];
+            while ($row = $result->fetch_assoc()) {
+                $users[] = $row;
+            }
+            echo json_encode(["status" => "success", "data" => $users]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "No users found"]);
+        }
     }
-    $stmt->close();
     $conn->close();
     exit;
 }

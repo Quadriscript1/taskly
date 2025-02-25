@@ -1,28 +1,37 @@
 <?php
+include('constant.php');
+
+// Enable error reporting
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Set response headers
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, GET");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+// Handle CORS Preflight Requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
 
 // Database connection
-$conn = new mysqli("localhost", "root", "", "todo_list");
+$conn = new mysqli("localhost", "root", "", "tasks");
 
 if ($conn->connect_error) {
     die(json_encode(['status' => 'error', 'message' => 'Database connection failed']));
 }
 
-// Handle GET request - Fetch task by ID using Params
+// Handle GET request - Fetch task by ID using URL params
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    if (!isset($_GET['id']) || empty($_GET['id'])) {
-        echo json_encode(["status" => "error", "message" => "Task ID is required"]);
+    if (!isset($_GET['id']) || empty($_GET['id']) || !is_numeric($_GET['id'])) {
+        echo json_encode(["status" => "error", "message" => "Valid Task ID is required"]);
         exit;
     }
 
     $task_id = intval($_GET['id']);
-    $query = "SELECT * FROM create_task WHERE id = ?";
+    $query = "SELECT id, title, task_description,all_day, start_date, end_date FROM tasks WHERE id = ?";
     
     $stmt = $conn->prepare($query);
     $stmt->bind_param("i", $task_id);
@@ -34,45 +43,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     } else {
         echo json_encode(["status" => "error", "message" => "Task not found"]);
     }
+    $stmt->close();
+    $conn->close();
     exit;
 }
 
-// Handle POST request - Save new task using JSON or Form Params
+// Handle POST request - Save new task using JSON body
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Read JSON body
+    // Read JSON input
     $json_data = json_decode(file_get_contents("php://input"), true);
 
-    if ($json_data) {
-        $title = $json_data['Title'] ?? '';
-        $task_description = $json_data['Task_description'] ?? '';
-        $add_subtrack = $json_data['Add_subtrack'] ?? '';
-        $all_day = $json_data['All_Day'] ?? '';
-    } else {
-        // If JSON is not sent, use form parameters
-        $title = $_POST['Title'] ?? '';
-        $task_description = $_POST['Task_description'] ?? '';
-        $add_subtrack = $_POST['Add_subtrack'] ?? '';
-        $all_day = $_POST['All_Day'] ?? '';
-    }
-
-    // Validate fields
-    if (empty($title) || empty($task_description) || empty($add_subtrack) || empty($all_day)) {
-        echo json_encode(['status' => 'error', 'message' => 'All fields are required']);
+    if (!$json_data) {
+        echo json_encode(["status" => "error", "message" => "Invalid JSON format"]);
         exit;
     }
 
-    $stmt = $conn->prepare("INSERT INTO create_task (Title, Task_description, Add_subtrack, All_Day) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("ssss", $title, $task_description, $add_subtrack, $all_day);
+    // Extract and validate fields
+    $title = trim($json_data['title'] ?? '');
+    $task_description = trim($json_data['task_description'] ?? '');
+    $all_day = trim($json_data['all_day'] ?? '');
+    $start_date = trim($json_data['start_date'] ?? '');
+    $end_date = trim($json_data['end_date'] ?? '');
+
+    if (empty($title) || empty($task_description) || empty($all_day) || empty($start_date) || empty($end_date)) {
+        echo json_encode(["status" => "error", "message" => "All fields are required"]);
+        exit;
+    }
+
+    // Insert into database
+    $stmt = $conn->prepare("INSERT INTO tasks (title, task_description, all_day, start_date,end_date ) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssbss", $title, $task_description,$all_day, $start_date,$end_date );
 
     if ($stmt->execute()) {
         echo json_encode([
-            'status' => 'success',
-            'message' => 'Task saved successfully',
-            'task_id' => $stmt->insert_id
+            "status" => "success",
+            "message" => "Task saved successfully",
+            "task_id" => $stmt->insert_id
         ]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Failed to save task']);
+        echo json_encode(["status" => "error", "message" => "Failed to save task"]);
     }
+    $stmt->close();
+    $conn->close();
     exit;
 }
+
+// If request method is not GET or POST
+echo json_encode(["status" => "error", "message" => "Invalid request method"]);
+exit;
 ?>
